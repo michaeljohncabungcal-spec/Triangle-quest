@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activity 2 — Interactive Matching Type</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2fff3;font-family:Arial,Helvetica,sans-serif;color:#111}
+.top{max-width:1450px;margin:12px auto 8px;padding:0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.top button{border:0;border-radius:8px;padding:10px 16px;font-size:16px;font-weight:bold;cursor:pointer;background:#078b1c;color:#fff}
+.top button.alt{background:#fff;color:#087b19;border:2px solid #087b19}
+#status{font-weight:bold;margin-left:auto}
+.stage{position:relative;width:min(100%,1450px);margin:0 auto;line-height:0}
+#connectors{position:absolute;left:0;top:0;width:100%;height:100%;display:block;pointer-events:none;overflow:visible;z-index:2}
+.connector-line{fill:none;stroke:#ff9f00;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 1px #fff)}
+.stage img{width:100%;height:auto;display:block}
+.hotspot{position:absolute;transform:translate(-50%,-50%);width:4.1%;aspect-ratio:1;border-radius:50%;border:3px solid transparent;background:transparent;cursor:pointer;padding:0;line-height:normal}
+.hotspot:focus-visible{outline:3px solid #ff9800;outline-offset:3px}
+.hotspot.selected{border-color:#ffb300;background:rgba(255,205,45,.24);box-shadow:0 0 0 3px rgba(255,255,255,.8)}
+.hotspot.correct{border-color:#00a92b;background:rgba(0,200,50,.22)}
+.hotspot.incorrect{border-color:#df2222;background:rgba(255,0,0,.18)}
+#feedback{max-width:1450px;margin:10px auto 18px;padding:12px 16px;background:#fff;border:2px solid #078b1c;border-radius:9px;font-weight:bold;line-height:1.35}
+#feedback.bad{border-color:#d22;background:#fff0f0}#feedback.good{border-color:#078b1c;background:#eaffed}
+.note{font-weight:normal}
+@media(max-width:650px){.hotspot{border-width:2px;width:5.3%}#status{width:100%;margin-left:0}.top{padding:0 8px}.top button{font-size:14px}}
+</style>
+</head>
+<body>
+<div class="top" style="justify-content:center">
+<div id="status" aria-live="polite">Correct matches: 0 of 3</div>
+</div>
+<div class="stage" id="stage">
+<img src="activity_reference.png" alt="Original Activity 2 matching-type worksheet about types of triangles">
+<svg id="connectors" aria-hidden="true"></svg>
+<!-- Hotspots are positioned over the existing silver circles in the original image. -->
+<button class="hotspot" style="left:19.34%;top:47.85%" data-col="a" data-id="equilateral" aria-label="Column A: three equal sides"></button>
+<button class="hotspot" style="left:19.34%;top:68.65%" data-col="a" data-id="isosceles" aria-label="Column A: two equal sides"></button>
+<button class="hotspot" style="left:19.27%;top:88.09%" data-col="a" data-id="scalene" aria-label="Column A: no equal sides"></button>
+<button class="hotspot" style="left:45.51%;top:49.02%" data-col="b" data-id="scalene" aria-label="Column B: blue triangle"></button>
+<button class="hotspot" style="left:46.48%;top:68.65%" data-col="b" data-id="equilateral" aria-label="Column B: orange triangle"></button>
+<button class="hotspot" style="left:46.34%;top:88.96%" data-col="b" data-id="isosceles" aria-label="Column B: green triangle"></button>
+<button class="hotspot" style="left:78.24%;top:46.09%" data-col="c" data-id="equilateral" aria-label="Column C: road sign example"></button>
+<button class="hotspot" style="left:78.31%;top:66.31%" data-col="c" data-id="isosceles" aria-label="Column C: roof example"></button>
+<button class="hotspot" style="left:78.24%;top:85.55%" data-col="c" data-id="scalene" aria-label="Column C: pizza slice example"></button>
+</div>
+<div id="feedback" role="status" aria-live="polite">Click one silver circle in each column. A connecting line will appear between your selections. When you have finished matching, click <strong>Check Match</strong> below.</div>
+<div class="top" style="justify-content:center;margin-top:12px">
+<button id="check">Check Match</button>
+<button class="alt" id="reset">Start Again</button>
+</div>
+<script>
+const chosen={a:null,b:null,c:null};
+const committedLines=[];
+const stage=document.getElementById("stage"),svg=document.getElementById("connectors");
+const names={equilateral:"Equilateral triangle",isosceles:"Isosceles triangle",scalene:"Scalene triangle"};
+let audioContext;
+function playGoodJobSound(){
+  try{
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    if(audioContext.state==="suspended") audioContext.resume();
+    const now=audioContext.currentTime;
+    // A short cheerful three-note chime for positive feedback.
+    [659.25,783.99,987.77].forEach((freq,i)=>{
+      const osc=audioContext.createOscillator();
+      const gain=audioContext.createGain();
+      osc.type="sine";osc.frequency.value=freq;
+      gain.gain.setValueAtTime(0.0001,now+i*0.13);
+      gain.gain.exponentialRampToValueAtTime(0.16,now+i*0.13+0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001,now+i*0.13+0.22);
+      osc.connect(gain);gain.connect(audioContext.destination);
+      osc.start(now+i*0.13);osc.stop(now+i*0.13+0.24);
+    });
+  }catch(e){/* Sound is optional if the browser blocks audio. */}
+}
+function getPoint(col,id){
+  const node=document.querySelector('.hotspot[data-col="'+col+'"][data-id="'+id+'"]');
+  if(!node)return null;
+  const stageRect=stage.getBoundingClientRect(),r=node.getBoundingClientRect();
+  return {x:r.left+r.width/2-stageRect.left,y:r.top+r.height/2-stageRect.top};
+}
+function drawConnectors(){
+  const stageRect=stage.getBoundingClientRect();
+  svg.setAttribute("viewBox",`0 0 ${stageRect.width} ${stageRect.height}`);
+  svg.innerHTML="";
+  const ns="http://www.w3.org/2000/svg";
+  committedLines.forEach(line=>{
+    const pts=[getPoint("a",line.a),getPoint("b",line.b),getPoint("c",line.c)];
+    if(pts.some(p=>!p))return;
+    const path=document.createElementNS(ns,"path");
+    path.setAttribute("class","connector-line");
+    path.setAttribute("d",pts.map((p,i)=>(i===0?"M":"L")+p.x+" "+p.y).join(" "));
+    path.setAttribute("stroke",line.checked?(line.correct?"#079b20":"#d12626"):"#ff9f00");
+    svg.appendChild(path);
+  });
+}
+window.addEventListener("resize",drawConnectors);
+function clearCurrent(){
+  chosen.a=chosen.b=chosen.c=null;
+  document.querySelectorAll(".hotspot").forEach(x=>x.classList.remove("selected","correct","incorrect"));
+}
+document.querySelectorAll(".hotspot").forEach(b=>b.addEventListener("click",()=>{
+ const col=b.dataset.col;
+ document.querySelectorAll('.hotspot[data-col="'+col+'"]').forEach(x=>x.classList.remove("selected","correct","incorrect"));
+ b.classList.add("selected");chosen[col]=b.dataset.id;
+ if(chosen.a&&chosen.b&&chosen.c){
+   const signature=[chosen.a,chosen.b,chosen.c].join("|");
+   if(!committedLines.some(line=>line.signature===signature)){
+     committedLines.push({a:chosen.a,b:chosen.b,c:chosen.c,signature,checked:false,correct:false});
+   }
+   clearCurrent();
+   drawConnectors();
+   const f=document.getElementById("feedback");f.className="";
+   f.textContent="Connection saved. Choose one circle in each column to make your next connection. Your previous lines will stay in place.";
+ } else {
+   drawConnectors();
+   const f=document.getElementById("feedback");f.className="";
+   f.textContent="Select one circle in each of the three columns to complete a connection.";
+ }
+}));
+document.getElementById("check").addEventListener("click",()=>{
+ const f=document.getElementById("feedback");
+ if(chosen.a||chosen.b||chosen.c){
+   f.className="bad";f.textContent="Finish the current connection by selecting one circle in each column before checking your score.";return;
+ }
+ if(committedLines.length<3){
+   f.className="bad";f.textContent="Please complete all 3 connections before checking your score. Connections completed: "+committedLines.length+" of 3.";return;
+ }
+ committedLines.forEach(line=>{
+   line.correct=line.a===line.b&&line.b===line.c;
+   line.checked=true;
+ });
+ const score=Math.min(3,committedLines.filter(line=>line.correct).length);
+ if(score>0) playGoodJobSound();
+ document.getElementById("status").textContent="Score: "+score+" / 3";
+ drawConnectors();
+ if(score===3){f.className="good";f.innerHTML="Excellent! All connections are correct. Final score: <strong>3 out of 3 (100%)</strong>.";}
+ else {f.className=score>0?"bad":"bad";f.innerHTML="Activity checked. Final score: <strong>"+score+" out of 3 ("+Math.round(score/3*100)+"%)</strong>. Green lines are correct; red lines need reviewing.";}
+});
+document.getElementById("reset").addEventListener("click",()=>{
+ clearCurrent();committedLines.length=0;drawConnectors();
+ document.getElementById("status").textContent="Score: 0 / 3";
+ const f=document.getElementById("feedback");f.className="";
+ f.innerHTML='Click one circle in each column to make a connection. Complete all 3 connections, then click <strong>Check Match</strong> to see your score.';
+});
+</script>
+</body>
+</html>
